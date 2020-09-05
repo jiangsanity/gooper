@@ -34,35 +34,36 @@ def lambda_handler(event, context):
     xml_welcome = '<Response><Message><Body>Thanks for contacting Gyoopercuts! Reply with ‘SCHEDULE’ to schedule a new appointment, ‘CHANGE’ to change an existing appointment, and ‘DROP’ to cancel your appointment.</Body></Message></Response>'
 
     resp_xml = xml_header
+    body = event['Body'].upper().strip()
     # schedule appointment
-    if event['Body'] == 'SCHEDULE':
+    if body == 'SCHEDULE':
         resp_xml += xml_schedule
-    elif re.match(r"APPOINTMENT\+[0-9]+", event['Body']):
+    elif re.match(r"APPOINTMENT\+[0-9]+", body):
         # check for name already in DB
         resp_xml += xml_appointment
-    elif re.match(r"CONFIRM*", event['Body']):
-        index = event['Body'].find('%3A')
+    elif re.match(r"CONFIRM*", body):
+        index = body.find('%3A')
         if index != -1:
             # add name to DB
-            name = event['Body'][index + 3:]
+            name = body[index + 3:]
             print(name)
         resp_xml += xml_confirm
     # change appointment
-    elif event['Body'] == 'CHANGE':
+    elif body == 'CHANGE':
         resp_xml += xml_change
-    elif re.match(r"SWAP\+[0-9]+", event['Body']):
+    elif re.match(r"SWAP\+[0-9]+", body):
         resp_xml += xml_swap_sender
         # send swap request to receiver
-    elif event['Body'] == 'SWAP+CONFIRM':
+    elif body == 'SWAP+CONFIRM':
         resp_xml += xml_swap_confirm_receiver
         # send swap request processed notification to sender - xml_swap_confirm_sender
     # cancel appointment
-    elif event['Body'] == 'DROP':
+    elif body == 'DROP':
         resp_xml += xml_cancel
-    elif re.match(r"TAKEOVER\+[0-9]+", event['Body']):
+    elif re.match(r"TAKEOVER\+[0-9]+", body):
         resp_xml += xml_takeover_sender
         # send takeover request to receiver
-    elif event['Body'] == 'TAKEOVER+CONFIRM':
+    elif body == 'TAKEOVER+CONFIRM':
         resp_xml += xml_takeover_confirm_receiver
         # send takeover request processed notification to sender - xml_takeover_confirm_sender
     # any other message
