@@ -144,7 +144,10 @@ def get_available_slots():
     available_slots = []
     appts = gyoop_appts.scan()['Items']
     for appt in appts:
-        available_slots.append(appt['slot_id'])
+        print(appt)
+        if not appt['phone_number']:
+            available_slots.append(appt['slot_id'])
+    print('final avail ' , available_slots)
     return available_slots
 
 def get_slot(slot_id):
