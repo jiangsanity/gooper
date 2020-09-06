@@ -36,8 +36,7 @@ xml_takeover_confirm_receiver = '<Response><Message><Body>Your new appointment i
 xml_retry = '<Response><Message><Body>You’ve entered an invalid input. Please try again.</Body></Message></Response>'
 
 valid_inputs = {
-    1: ['SCHEDULE', 'CHANGE', 'DROP'],
-    2: r"APPOINTMENT\+[0-9]+"
+    1: ['SCHEDULE', 'CHANGE', 'DROP']
 }
 
 def respond(err, res=None):
