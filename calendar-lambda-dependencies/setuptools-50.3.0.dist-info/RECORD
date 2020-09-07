@@ -1,5 +1,5 @@
-../../bin/easy_install-3.7.exe,sha256=Qc4iTWgz7xljDeyGaVDFIPcs0nJePlBm_xN1PWHUums,103315
-../../bin/easy_install.exe,sha256=Qc4iTWgz7xljDeyGaVDFIPcs0nJePlBm_xN1PWHUums,103315
+../../bin/easy_install-3.7.exe,sha256=6wu0MkNZTp7shKvBQq0JiYpvf6MWEZQPpcOhWq6xYAE,103315
+../../bin/easy_install.exe,sha256=6wu0MkNZTp7shKvBQq0JiYpvf6MWEZQPpcOhWq6xYAE,103315
 __pycache__/easy_install.cpython-37.pyc,,
 _distutils_hack/__init__.py,sha256=wFuARcmlHtkV20HfRBlQaMPY7hQx-TEEtnBpXeysiwI,3552
 _distutils_hack/__pycache__/__init__.cpython-37.pyc,,
