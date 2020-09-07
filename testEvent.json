@@ -1,0 +1,21 @@
+{
+  "ToCountry": "US",
+  "ToState": "AL",
+  "SmsMessageSid": "SM48fd4da224db84183da1508505b48c8a",
+  "NumMedia": "0",
+  "ToCity": "JEMISON",
+  "FromZip": "30176",
+  "SmsSid": "SM48fd4da224db84183da1508505b48c8a",
+  "FromState": "GA",
+  "SmsStatus": "received",
+  "FromCity": "TALLAPOOSA",
+  "Body": "A",
+  "FromCountry": "US",
+  "To": "%2B12059557292",
+  "ToZip": "35085",
+  "NumSegments": "1",
+  "MessageSid": "SM48fd4da224db84183da1508505b48c8a",
+  "AccountSid": "ACe09ad569c47d99471f9ea7bb302cc72f",
+  "From": "%2B16785990243",
+  "ApiVersion": "2010-04-01"
+}

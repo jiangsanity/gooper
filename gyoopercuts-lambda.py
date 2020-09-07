@@ -2,12 +2,9 @@ import boto3
 import json
 import re
 from datetime import datetime, timezone
+from helpers import *
+from xml_responses import *
 print('Loading function')
-
-db = boto3.resource('dynamodb')
-gyoop_appts = db.Table('gyoop_appts')
-gyoop_clients = db.Table('gyoop_clients')
-gyoop_convos = db.Table('gyoop_convos')
 
 xml_header = '<?xml version=\"1.0\" encoding=\"UTF-8\"?>'
 xml_start = '<Response><Message><Body>'
@@ -18,7 +15,8 @@ xml_actions = '<Response><Message><Body>Thanks for contacting Gyoopercuts! Reply
 xml_schedule = 'Here are the time slots that are currently available for sign-ups. Haircuts on {0} will be between {1} and {2}. If your desired time is not listed below as an option, please check back later. Reply with ‘APPOINTMENT LETTER’ from the available time slots below. (ex. Reply ‘APPOINTMENT C’ for time slot C)\n'
 xml_available_slot = '\nTime Slot {0} :\n {1} - {2}'
 xml_appointment = '<Response><Message><Body>Thanks for scheduling an appointment. Keep in mind that you will need to find someone to replace your time slot if you’d like to change or cancel the appointment. </Body></Message></Response>'
-
+xml_already_signed_up = '<Response><Message><Body>You are already signed up, you may not sign up for multiple time slots.</Body></Message></Response>'
+xml_all_booked_message = '<Response><Message><Body>Sorry, all appointments for this week are booked. Please check again next week.</Body></Message></Response>'
 xml_confirm = '<Response><Message><Body>Thanks for scheduling an appointment for {0} &appointment_start_time;. I’ll see you then!</Body></Message></Response>'
 # changing appointment
 xml_change = '<Response><Message><Body>Please reach out to the person to swap time slots prior to replying to this message. When you’ve arranged the swap with the person, reply with ‘SWAP #’. (ex. Reply ‘SWAP 3’ to swap with time slot 3) Swap is not complete until the other person accepts the swap request.</Body></Message></Response>'
@@ -35,24 +33,25 @@ xml_takeover_confirm_receiver = '<Response><Message><Body>Your new appointment i
 # any other message
 xml_retry = '<Response><Message><Body>You’ve entered an invalid input. Please try again.</Body></Message></Response>'
 
+db = boto3.resource('dynamodb')
+gyoop_appts = db.Table('gyoop_appts')
+gyoop_clients = db.Table('gyoop_clients')
+gyoop_convos = db.Table('gyoop_convos')
+
 valid_inputs = {
     1: ['SCHEDULE', 'CHANGE', 'DROP']
 }
-
-def respond(err, res=None):
-    return {
-        'statusCode': '400' if err else '200',
-        'body': err.message if err else json.dumps(res),
-        'headers': {
-            'Content-Type': 'application/json',
-        },
-    }
 
 def lambda_handler(event, context):
     from_number = '+' + event['From'][3:]
     message_body = event['Body'].upper().strip().replace('+',' ')
     current_state = get_current_state(from_number)
+
     print('message body : ', message_body)
+
+    if message_body == 'START OVER':
+        update_state(from_number, current_state, 1)
+        return ask_initial_action()
     
     # no active conversation
     if current_state == None:
@@ -71,8 +70,6 @@ def lambda_handler(event, context):
         add_new_contact(from_number, message_body)
         return ask_initial_action()
 
-    # print(get_available_slots())
-    # print(get_slot('A'))
     # state asking for action
     if current_state == 1:
         current_valid_inputs = valid_inputs[current_state]
@@ -81,7 +78,12 @@ def lambda_handler(event, context):
         else:
             if message_body == 'SCHEDULE':
                 #schedule
-                # todo : check if user already has appt
+                if already_booked(from_number):
+                    end_conversation(from_number)
+                    return get_already_signed_up_message()
+                if len(get_available_slots()) == 0:
+                    end_conversation(from_number)
+                    return get_all_booked_message()
                 update_state(from_number, current_state, 2)
                 return get_schedule_message()
             elif message_body == 'CHANGE':
@@ -96,9 +98,8 @@ def lambda_handler(event, context):
     if current_state == 2:
         #add to appt database
         if re.match(r"APPOINTMENT [A-Z]+", message_body):
-            #todo check if time slot is available_slots.append(appt['slot_id'])
             slot_id = message_body.split()[1]
-            if slot_id in get_available_slots() :
+            if slot_id in get_available_slots():
                 print('about to update item')
                 gyoop_appts.update_item(
                     Key = {
@@ -115,6 +116,30 @@ def lambda_handler(event, context):
             else:
                 return ask_try_again()
 
+def respond(err, res=None):
+    return {
+        'statusCode': '400' if err else '200',
+        'body': err.message if err else json.dumps(res),
+        'headers': {
+            'Content-Type': 'application/json',
+        },
+    }
+
+def get_all_booked_message():
+    return xml_header + xml_all_booked_message
+
+def already_booked(phone_number):
+    for appt in get_all_appointments():
+        if appt['phone_number'] == phone_number:
+            return True
+    return False
+
+def get_all_appointments():
+    try:
+        return gyoop_appts.scan()['Items']
+    except:
+        return None
+
 def get_client(phone_number):
     try:
         return gyoop_clients.get_item(
@@ -127,26 +152,42 @@ def get_client(phone_number):
 
 
 def end_conversation(phone_number):
-    # print(phone_number)
     try:
         temp = gyoop_convos.delete_item(
             Key = {
                 'phone_number': phone_number
             }
         )
-        # print('unsuccessful ', temp)
     except:
         print('not in db')
 
-#todo check for continuity and availability
 def get_available_slots():
     print('inside avail slots')
-    available_slots = []
-    appts = gyoop_appts.scan()['Items']
+    all_slots = []
+    appts = get_all_appointments()
+    appt_str = ''
+
     for appt in appts:
-        print(appt)
         if not appt['phone_number']:
-            available_slots.append(appt['slot_id'])
+            appt_str += '0'
+        else:
+            appt_str += '1'
+        all_slots.append(appt['slot_id'])
+
+    first_booked = appt_str.find('1')
+    last_booked = appt_str.rfind('1')
+    # all slot available
+    if first_booked == -1:
+        return all_slots
+
+    available_slots = []
+    if first_booked != 0:
+        available_slots.append(all_slots[first_booked - 1])
+    if last_booked != len(appt_str) - 1:
+        available_slots.append(all_slots[last_booked + 1])
+
+    return available_slots
+
     print('final avail ' , available_slots)
     return available_slots
 
@@ -166,29 +207,31 @@ def ask_try_again():
 def get_schedule_confirm_message():
     return xml_header + xml_appointment
 
+def get_already_signed_up_message():
+    return xml_header + xml_already_signed_up
+
 def get_schedule_message():
     open_slots = get_available_slots()
     message_lines = []
-    all_start_time = ''
-    all_end_time = ''
-    all_date =''
 
-    for ind, slot_id in enumerate(open_slots):
+    all_slots = get_all_appointments()
+    first_slot_id = all_slots[0]['slot_id']
+    last_slot_id = all_slots[-1]['slot_id']
+    
+    all_start_utc = get_slot(first_slot_id)['start_date_time']
+    all_end_utc = get_slot(last_slot_id)['end_date_time']
+    all_date, all_start_time = utc_to_readable(all_start_utc)
+    _, all_end_time = utc_to_readable(all_end_utc)
+
+    for slot_id in open_slots:
         current_slot = get_slot(slot_id)
         start_time_utc = current_slot['start_date_time']
         date, start_time = utc_to_readable(start_time_utc)
 
         end_time_utc = current_slot['end_date_time']
         _, end_time = utc_to_readable(end_time_utc)
-        # if ind == 0:
-        #     message += xml_schedule.format()
-        if ind == 0:
-            all_start_time = start_time
-            all_date = date
-        if ind == len(open_slots) - 1:
-            all_end_time = end_time
+
         new_line = xml_available_slot.format(slot_id, start_time, end_time)
-        # print('newLine ', new_line)
         message_lines.append(new_line)
     
     message = xml_header + xml_start + xml_schedule.format(date, all_start_time, all_end_time)
@@ -210,7 +253,6 @@ def add_new_contact(phone_number, name):
             'name': name
         }
     )
-
     
 def ask_for_name():
     return xml_header + xml_name
