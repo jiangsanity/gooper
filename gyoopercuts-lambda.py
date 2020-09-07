@@ -2,6 +2,10 @@ import boto3
 import json
 import re
 from datetime import datetime, timezone
+import urllib
+from urllib import request, parse
+import base64
+import os
 from helpers import *
 from xml_responses import *
 print('Loading function')
@@ -33,6 +37,10 @@ xml_takeover_confirm_receiver = '<Response><Message><Body>Your new appointment i
 # any other message
 xml_retry = '<Response><Message><Body>You’ve entered an invalid input. Please try again.</Body></Message></Response>'
 
+TWILIO_SMS_URL = "https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json"
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+
 db = boto3.resource('dynamodb')
 gyoop_appts = db.Table('gyoop_appts')
 gyoop_clients = db.Table('gyoop_clients')
@@ -47,6 +55,7 @@ def lambda_handler(event, context):
     message_body = event['Body'].upper().strip().replace('+',' ')
     current_state = get_current_state(from_number)
 
+    print('event is: ', event)
     print('message body : ', message_body)
 
     if message_body == 'START OVER':
@@ -81,7 +90,8 @@ def lambda_handler(event, context):
                 if already_booked(from_number):
                     end_conversation(from_number)
                     return get_already_signed_up_message()
-                if len(get_available_slots()) == 0:
+                available_slots = get_available_slots()
+                if not available_slots or len(available_slots) == 0:
                     end_conversation(from_number)
                     return get_all_booked_message()
                 update_state(from_number, current_state, 2)
@@ -112,9 +122,45 @@ def lambda_handler(event, context):
                 )
                 end_conversation(from_number)
                 print('ended conversation')
+
+                scheduled_slot = get_slot(slot_id)
+                name = get_client(scheduled_slot["phone_number"])["name"]
+                date, start_time = utc_to_readable(scheduled_slot["start_date_time"])
+                notification = '{0} scheduled an appointment for {1} at {2}'.format(name, date, start_time)
+                print('notification ', notification)
+                send_SMS(notification)
                 return get_schedule_confirm_message()
             else:
                 return ask_try_again()
+
+def send_SMS(message):
+    if not TWILIO_ACCOUNT_SID:
+        return "Unable to access Twilio Account SID."
+    if not TWILIO_AUTH_TOKEN:
+        return "Unable to access Twilio Auth Token."
+
+    # insert Twilio Account SID into the REST API URL
+    populated_url = TWILIO_SMS_URL.format(TWILIO_ACCOUNT_SID)
+    post_params = {"To": '+16785990243', "From": '+12059557292', "Body": message}
+
+    # encode the parameters for Python's urllib
+    data = parse.urlencode(post_params).encode()
+    req = request.Request(populated_url)
+
+    # add authentication header to request based on Account SID + Auth Token
+    authentication = "{}:{}".format(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+    base64string = base64.b64encode(authentication.encode('utf-8'))
+    req.add_header("Authorization", "Basic %s" % base64string.decode('ascii'))
+
+    try:
+        # perform HTTP POST request
+        with request.urlopen(req, data) as f:
+            print("Twilio returned {}".format(str(f.read().decode('utf-8'))))
+    except Exception as e:
+        # something went wrong!
+        return e
+
+    return "SMS sent successfully!"
 
 def respond(err, res=None):
     return {
@@ -168,16 +214,24 @@ def get_available_slots():
     appt_str = ''
 
     for appt in appts:
-        if not appt['phone_number']:
+        all_slots.append(appt['slot_id'])
+    all_slots.sort()
+
+    for slot_id in all_slots:
+        if not get_slot(slot_id)["phone_number"] or get_slot(slot_id)["phone_number"] == '':
             appt_str += '0'
         else:
             appt_str += '1'
-        all_slots.append(appt['slot_id'])
+
+    print('appt_str ', appt_str)
+    print('all_slots sorted', all_slots)
 
     first_booked = appt_str.find('1')
     last_booked = appt_str.rfind('1')
+    print("first and last booked indicies are ", first_booked, ' ', last_booked)
     # all slot available
     if first_booked == -1:
+        print("should be returning all_slots: ", all_slots)
         return all_slots
 
     available_slots = []
@@ -185,8 +239,6 @@ def get_available_slots():
         available_slots.append(all_slots[first_booked - 1])
     if last_booked != len(appt_str) - 1:
         available_slots.append(all_slots[last_booked + 1])
-
-    return available_slots
 
     print('final avail ' , available_slots)
     return available_slots
