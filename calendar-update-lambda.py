@@ -13,10 +13,12 @@ gyoop_clients = db.Table('gyoop_clients')
 def lambda_handler(event, context):
     SCOPES = ['https://www.googleapis.com/auth/calendar']
     # SERVICE_ACCOUNT_FILE = 'gyoopercutscalendar-fca1ca3ca42c.json' # You should make it an environment variable
-    SERVICE_ACCOUNT_FILE = {'INSERT SERVICE ACCOUNT JSON FILE AS MAP HERE'}
+    SERVICE_ACCOUNT_FILE = 'INSERT SERVICE ACCOUNT JSON FILE'
 
-    SUBJECT = 'INSERT SERVICE ACCOUNT EMAIL HERE'
-    CALENDAR_ID = 'INSERT CALENDAR ID HERE'
+
+
+    SUBJECT = 'ENTER SERVICE ACCOUNT EMAIL HERE'
+    CALENDAR_ID = 'ENTER CALENDAR ID HERE'
     
     
     credentials = service_account.Credentials.from_service_account_info(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
@@ -27,17 +29,29 @@ def lambda_handler(event, context):
     now = datetime.utcnow().isoformat() + 'Z' # 'Z' indicates UTC time
     
     #delete all events on specified calendar
-    events = service.events().list(calendarId=CALENDAR_ID,singleEvents=True).execute()
+    sunday_start = datetime.today() - timedelta(days=datetime.today().isoweekday() % 7)
+    saturday_end = sunday_start + timedelta(days=6)
+    sunday_start_utc = sunday_start.isoformat() + 'Z'
+    saturday_end_utc = saturday_end.isoformat() + 'Z'
+
+
+    events = service.events().list(calendarId=CALENDAR_ID,timeMin=sunday_start_utc, timeMax=saturday_end_utc,singleEvents=True).execute()
     all_event_ids = [e['id'] for e in events['items']]
     all_new_events = []
+    # print(all_event_ids)
     for eid in all_event_ids:
-        service.events().delete(calendarId=CALENDAR_ID, eventId=eid).execute()
+        old_event = service.events().delete(calendarId=CALENDAR_ID, eventId=eid).execute()
 
     #read all appointments from db, populate calendar
     all_current_appts = gyoop_appts.scan()['Items']
     for new_event in all_current_appts:
-        start_date_time = new_event['start_date_time']
-        end_date_time = new_event['end_date_time']
+        # start_date_time = new_event['start_date_time']
+        # end_date_time = new_event['end_date_time']
+        start_date_time = datetime.strptime(new_event['start_date_time'], "%Y-%m-%dT%H:%M:%S%z") + timedelta(hours=4)
+        end_date_time = datetime.strptime(new_event['end_date_time'], "%Y-%m-%dT%H:%M:%S%z") + timedelta(hours=4)
+        start_date_time = start_date_time.strftime("%Y-%m-%dT%H:%M:%S%z")
+        end_date_time = end_date_time.strftime("%Y-%m-%dT%H:%M:%S%z")
+
         slot_id = new_event['slot_id']
         phone_number = new_event['phone_number']
 
@@ -62,8 +76,9 @@ def lambda_handler(event, context):
             }
         }
         all_new_events.append(event)
+        print('making event ', event)
         event = service.events().insert(calendarId=CALENDAR_ID, body=event).execute()
-
+    # print(all_new_events)
     return {
         'statusCode': 200,
         'body': json.dumps(all_new_events)
