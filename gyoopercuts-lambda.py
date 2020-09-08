@@ -14,7 +14,8 @@ xml_header = '<?xml version=\"1.0\" encoding=\"UTF-8\"?>'
 xml_start = '<Response><Message><Body>'
 xml_end = '</Body></Message></Response>'
 xml_name = '<Response><Message><Body>Welcome to Gyoopercuts! Reply with ‘YOUR_NAME’ to get started. (ex. ‘SEON LEE’)</Body></Message></Response>'
-xml_actions = '<Response><Message><Body>Thanks for contacting Gyoopercuts! Reply with ‘SCHEDULE’ to schedule a new appointment, ‘CHANGE’ to change an existing appointment, and DROP to cancel your appointment. At any point, reply ‘START OVER’ to return to this message.</Body></Message></Response>'
+# xml_actions = '<Response><Message><Body>Thanks for contacting Gyoopercuts! Reply with ‘SCHEDULE’ to schedule a new appointment, ‘CHANGE’ to change an existing appointment, and DROP to cancel your appointment. At any point, reply ‘START OVER’ to return to this message.</Body></Message></Response>'
+xml_actions = '<Response><Message><Body>Thanks for contacting Gyoopercuts! Reply with ‘SCHEDULE’ to schedule a new appointment. At any point, reply ‘START OVER’ to return to this message.</Body></Message></Response>'
 
 xml_schedule = 'Here are the time slots that are currently available for sign-ups. Haircuts on {0} will be between {1} and {2}. If your desired time is not listed below as an option, please check back later. Reply with ‘APPOINTMENT LETTER’ from the available time slots below. (ex. Reply ‘APPOINTMENT C’ for time slot C)\n'
 xml_available_slot = '\nTime Slot {0} :\n {1} - {2}'
@@ -266,9 +267,14 @@ def get_schedule_message():
     open_slots = get_available_slots()
     message_lines = []
 
-    all_slots = get_all_appointments()
-    first_slot_id = all_slots[0]['slot_id']
-    last_slot_id = all_slots[-1]['slot_id']
+    all_slots = []
+    appts = get_all_appointments()
+    for appt in appts:
+        all_slots.append(appt['slot_id'])
+    all_slots.sort()
+
+    first_slot_id = all_slots[0]
+    last_slot_id = all_slots[-1]
     
     all_start_utc = get_slot(first_slot_id)['start_date_time']
     all_end_utc = get_slot(last_slot_id)['end_date_time']
