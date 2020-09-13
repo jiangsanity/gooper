@@ -1,7 +1,7 @@
 import boto3
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import urllib
 from urllib import request, parse
 import base64
@@ -17,6 +17,7 @@ xml_name = '<Response><Message><Body>Welcome to Gyoopercuts! Reply with ‘YOUR_
 # xml_actions = '<Response><Message><Body>Thanks for contacting Gyoopercuts! Reply with ‘SCHEDULE’ to schedule a new appointment, ‘CHANGE’ to change an existing appointment, and DROP to cancel your appointment. At any point, reply ‘START OVER’ to return to this message.</Body></Message></Response>'
 xml_actions = '<Response><Message><Body>Thanks for contacting Gyoopercuts! Reply with ‘SCHEDULE’ to schedule a new appointment. At any point, reply ‘START OVER’ to return to this message.</Body></Message></Response>'
 
+# schedule
 xml_schedule = 'Here are the time slots that are currently available for sign-ups. Haircuts on {0} will be between {1} and {2}. If your desired time is not listed below as an option, please check back later. Reply with ‘APPOINTMENT LETTER’ from the available time slots below. (ex. Reply ‘APPOINTMENT C’ for time slot C)\n'
 xml_available_slot = '\nTime Slot {0} :\n {1} - {2}'
 xml_appointment = '<Response><Message><Body>Thanks for scheduling an appointment. Keep in mind that you will need to find someone to replace your time slot if you’d like to change or cancel the appointment. </Body></Message></Response>'
@@ -35,6 +36,8 @@ xml_takeover_sender = '<Response><Message><Body>Your takeover request for [name]
 xml_takeover_receiver = '<Response><Message><Body>[name] with [date] [start_time] slot would like you to take over his spot and should have confirmed it with you already. Reply ‘TAKEOVER CONFIRM’ to accept this takeover request.</Body></Message></Response>'
 xml_takeover_confirm_sender = '<Response><Message><Body>Your takeover request has been approved. You have successfully canceled your appointment for [date] [start_time].</Body></Message></Response>'
 xml_takeover_confirm_receiver = '<Response><Message><Body>Your new appointment is now scheduled for [date] [start_time]. Takeover request sender has also been informed.</Body></Message></Response>'
+# respond to admin
+xml_admin = '<Response><Message><Body>Time slots have been created for {0} {1} to {2}.</Body></Message></Response>'
 # any other message
 xml_retry = '<Response><Message><Body>You’ve entered an invalid input. Please try again.</Body></Message></Response>'
 
@@ -58,6 +61,25 @@ def lambda_handler(event, context):
 
     print('event is: ', event)
     print('message body : ', message_body)
+
+    #! ADMIN CONTROL
+    if from_number == os.environ.get("ADMIN_PHONE_NUMBER"):
+        date, all_start_time, all_end_time = message_body.split(' ')
+        all_start_time = all_start_time[:2] + ':' + all_start_time[-2:]
+        all_end_time = all_end_time[:2] + ':' + all_end_time[-2:]
+        slot_start_obj = datetime.strptime(date + 'T' + all_start_time + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
+        slot_end_obj = slot_start_obj + timedelta(seconds=1800)
+        all_end_obj = datetime.strptime(date + 'T' + all_end_time + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
+
+        delete_all_appts()
+        slot_id = 'A'
+        while slot_end_obj <= all_end_obj:
+            add_slot_to_db(slot_id, slot_start_obj.strftime('%Y-%m-%dT%H:%M:%SZ'), slot_end_obj.strftime('%Y-%m-%dT%H:%M:%SZ'))
+            slot_start_obj += timedelta(seconds=1800)
+            slot_end_obj += timedelta(seconds=1800)
+            slot_id = chr(ord(slot_id) + 1)
+
+        return get_admin_message(date, all_start_time, all_end_time)
 
     if message_body == 'START OVER':
         update_state(from_number, current_state, 1)
@@ -142,7 +164,7 @@ def send_SMS(message):
 
     # insert Twilio Account SID into the REST API URL
     populated_url = TWILIO_SMS_URL.format(TWILIO_ACCOUNT_SID)
-    post_params = {"To": '+16785990243', "From": '+12059557292', "Body": message}
+    post_params = {"To": os.environ.get("ADMIN_PHONE_NUMBER"), "From": os.environ.get("TWILIO_PHONE_NUMBER"), "Body": message}
 
     # encode the parameters for Python's urllib
     data = parse.urlencode(post_params).encode()
@@ -171,6 +193,33 @@ def respond(err, res=None):
             'Content-Type': 'application/json',
         },
     }
+
+def add_slot_to_db(slot_id, start_time, end_time):
+    return gyoop_appts.put_item(
+        Item = {
+            'slot_id': slot_id,
+            'start_date_time': start_time,
+            'end_date_time': end_time,
+            'phone_number': ''
+        }
+    )
+
+def delete_all_appts():
+    try:
+        scan = gyoop_appts.scan()
+        with gyoop_appts.batch_writer() as batch:
+            for each in scan['Items']:
+                batch.delete_item(
+                    Key={
+                        'uId': each['uId'],
+                        'compId': each['compId']
+                    }
+                )
+    except:
+        return None
+
+def get_admin_message(date, start_time, end_time):
+    return xml_header + xml_admin.format(date, start_time, end_time)
 
 def get_all_booked_message():
     return xml_header + xml_all_booked_message
