@@ -64,22 +64,25 @@ def lambda_handler(event, context):
 
     #! ADMIN CONTROL
     if from_number == os.environ.get("ADMIN_PHONE_NUMBER"):
-        date, all_start_time, all_end_time = message_body.split(' ')
-        all_start_time = all_start_time[:2] + ':' + all_start_time[-2:]
-        all_end_time = all_end_time[:2] + ':' + all_end_time[-2:]
-        slot_start_obj = datetime.strptime(date + 'T' + all_start_time + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
-        slot_end_obj = slot_start_obj + timedelta(seconds=1800)
-        all_end_obj = datetime.strptime(date + 'T' + all_end_time + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
+        if message_body == 'REMIND':
+            return remind_clients()
+        else:
+            date, all_start_time, all_end_time = message_body.split(' ')
+            all_start_time = all_start_time[:2] + ':' + all_start_time[-2:]
+            all_end_time = all_end_time[:2] + ':' + all_end_time[-2:]
+            slot_start_obj = datetime.strptime(date + 'T' + all_start_time + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
+            slot_end_obj = slot_start_obj + timedelta(seconds=1800)
+            all_end_obj = datetime.strptime(date + 'T' + all_end_time + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
 
-        delete_all_appts()
-        slot_id = 'A'
-        while slot_end_obj <= all_end_obj:
-            add_slot_to_db(slot_id, slot_start_obj.strftime('%Y-%m-%dT%H:%M:%SZ'), slot_end_obj.strftime('%Y-%m-%dT%H:%M:%SZ'))
-            slot_start_obj += timedelta(seconds=1800)
-            slot_end_obj += timedelta(seconds=1800)
-            slot_id = chr(ord(slot_id) + 1)
+            delete_all_appts()
+            slot_id = 'A'
+            while slot_end_obj <= all_end_obj:
+                add_slot_to_db(slot_id, slot_start_obj.strftime('%Y-%m-%dT%H:%M:%SZ'), slot_end_obj.strftime('%Y-%m-%dT%H:%M:%SZ'))
+                slot_start_obj += timedelta(seconds=1800)
+                slot_end_obj += timedelta(seconds=1800)
+                slot_id = chr(ord(slot_id) + 1)
 
-        return get_admin_message(date, all_start_time, all_end_time)
+            return get_admin_message(date, all_start_time, all_end_time)
 
     if message_body == 'START OVER':
         update_state(from_number, current_state, 1)
@@ -151,12 +154,12 @@ def lambda_handler(event, context):
                 date, start_time = utc_to_readable(scheduled_slot["start_date_time"])
                 notification = '{0} scheduled an appointment for {1} at {2}'.format(name, date, start_time)
                 print('notification ', notification)
-                send_SMS(notification)
+                send_SMS(notification, os.environ.get("ADMIN_PHONE_NUMBER"))
                 return get_schedule_confirm_message()
             else:
                 return ask_try_again()
 
-def send_SMS(message):
+def send_SMS(message, to_number):
     if not TWILIO_ACCOUNT_SID:
         return "Unable to access Twilio Account SID."
     if not TWILIO_AUTH_TOKEN:
@@ -164,7 +167,7 @@ def send_SMS(message):
 
     # insert Twilio Account SID into the REST API URL
     populated_url = TWILIO_SMS_URL.format(TWILIO_ACCOUNT_SID)
-    post_params = {"To": os.environ.get("ADMIN_PHONE_NUMBER"), "From": os.environ.get("TWILIO_PHONE_NUMBER"), "Body": message}
+    post_params = {"To": to_number, "From": os.environ.get("TWILIO_PHONE_NUMBER"), "Body": message}
 
     # encode the parameters for Python's urllib
     data = parse.urlencode(post_params).encode()
@@ -193,6 +196,14 @@ def respond(err, res=None):
             'Content-Type': 'application/json',
         },
     }
+
+def remind_clients():
+    appts = get_all_appointments()
+    for appt in appts:
+        if appt["phone_number"]:
+            date, start_time = utc_to_readable(appt["start_date_time"])
+            reminder_message = 'This is a reminder for your haircut appointment on {0} at {1}.'.format(date, start_time)
+            send_SMS(reminder_message, appt["phone_number"])
 
 def add_slot_to_db(slot_id, start_time, end_time):
     return gyoop_appts.put_item(
