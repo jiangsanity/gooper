@@ -111,7 +111,7 @@ def lambda_handler(event, context):
         if message_body not in current_valid_inputs:
             return ask_try_again()
         else:
-            if message_body == 'SCHEDULE':
+            if 'SCHEDULE' in message_body:
                 #schedule
                 if already_booked(from_number):
                     end_conversation(from_number)
