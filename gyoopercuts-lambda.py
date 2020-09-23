@@ -66,6 +66,8 @@ def lambda_handler(event, context):
     if from_number == os.environ.get("ADMIN_PHONE_NUMBER"):
         if message_body == 'REMIND':
             return remind_clients()
+        elif message_body == 'CLOSE':
+            return close_appointments()
         else:
             date, all_start_time, all_end_time = message_body.split(' ')
             all_start_time = all_start_time[:2] + ':' + all_start_time[-2:]
@@ -197,6 +199,13 @@ def respond(err, res=None):
         },
     }
 
+def close_appointments():
+    appts = get_all_appointments()
+    for appt in appts:
+        if not appt["phone_number"] or (appt["phone_number"] == ''):
+            delete_appt(appt["slot_id"])
+    send_SMS("Appointments successfully closed", os.environ.get("ADMIN_PHONE_NUMBER"))
+
 def remind_clients():
     appts = get_all_appointments()
     for appt in appts:
@@ -214,6 +223,16 @@ def add_slot_to_db(slot_id, start_time, end_time):
             'phone_number': ''
         }
     )
+
+def delete_appt(slot_id):
+    try:
+        temp = gyoop_appts.delete_item(
+            Key = {
+                'slot_id': slot_id
+            }
+        )
+    except:
+        print('not in db')
 
 def delete_all_appts():
     try:
