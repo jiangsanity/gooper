@@ -8,7 +8,7 @@ import base64
 import os
 from helpers import *
 from xml_responses import *
-print('Loading function')
+# print('Loading function')
 
 xml_header = '<?xml version=\"1.0\" encoding=\"UTF-8\"?>'
 xml_start = '<Response><Message><Body>'
@@ -51,7 +51,7 @@ gyoop_clients = db.Table('gyoop_clients')
 gyoop_convos = db.Table('gyoop_convos')
 
 valid_inputs = {
-    1: ['SCHEDULE', 'CHANGE', 'DROP']
+    1: ['SCHEDULE', 'SCHEDULE ', 'CHANGE', 'DROP']
 }
 
 def lambda_handler(event, context):
@@ -61,6 +61,7 @@ def lambda_handler(event, context):
 
     print('event is: ', event)
     print('message body : ', message_body)
+    print('message body length: ', len(message_body))
 
     #! ADMIN CONTROL
     if from_number == os.environ.get("ADMIN_PHONE_NUMBER"):
@@ -113,7 +114,7 @@ def lambda_handler(event, context):
         if message_body not in current_valid_inputs:
             return ask_try_again()
         else:
-            if 'SCHEDULE' in message_body:
+            if message_body.find('SCHEDULE') != -1:
                 #schedule
                 if already_booked(from_number):
                     end_conversation(from_number)
@@ -213,6 +214,7 @@ def remind_clients():
             date, start_time = utc_to_readable(appt["start_date_time"])
             reminder_message = 'This is a reminder for your haircut appointment on {0} at {1}.'.format(date, start_time)
             send_SMS(reminder_message, appt["phone_number"])
+    send_SMS("Reminders sent successfully", os.environ.get("ADMIN_PHONE_NUMBER"))
 
 def add_slot_to_db(slot_id, start_time, end_time):
     return gyoop_appts.put_item(
