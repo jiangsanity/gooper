@@ -386,6 +386,9 @@ def get_drop_message():
     return xml_header + xml_drop
 
 def add_new_contact(phone_number, name):
+    if name.find('%27') >= 0:
+        name = name.replace('%27', '', 2)
+
     return gyoop_clients.put_item(
         Item = {
             'phone_number': phone_number,
