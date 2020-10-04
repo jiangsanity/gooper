@@ -87,7 +87,7 @@ def lambda_handler(event, context):
 
             return get_admin_message(date, all_start_time, all_end_time)
 
-    if message_body == 'START OVER':
+    if message_body == 'START OVER' or message_body == 'START OVER ':
         update_state(from_number, current_state, 1)
         return ask_initial_action()
     
@@ -161,6 +161,8 @@ def lambda_handler(event, context):
                 return get_schedule_confirm_message()
             else:
                 return ask_try_again()
+        else:
+            return ask_try_again()
 
 def send_SMS(message, to_number):
     if not TWILIO_ACCOUNT_SID:
