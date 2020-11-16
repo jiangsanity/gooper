@@ -3,7 +3,6 @@ import boto3
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from datetime import datetime, timedelta
-import pytz
 import os
 
 db = boto3.resource('dynamodb')
@@ -15,10 +14,9 @@ gyoop_clients = db.Table('gyoop_clients')
 def lambda_handler(event, context):
     SCOPES = ['https://www.googleapis.com/auth/calendar']
     # SERVICE_ACCOUNT_FILE = 'gyoopercutscalendar-fca1ca3ca42c.json' # You should make it an environment variable
-    SERVICE_ACCOUNT_FILE = os.environ.get("SERVICE_ACCOUNT_FILE")
+    SERVICE_ACCOUNT_FILE = json.loads(os.environ.get("SERVICE_ACCOUNT_FILE"))
     SUBJECT = os.environ.get("SUBJECT")
     CALENDAR_ID = os.environ.get("CALENDAR_ID")
-    
     
     credentials = service_account.Credentials.from_service_account_info(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
     delegated_credentials = credentials.with_subject(SUBJECT)
@@ -44,9 +42,13 @@ def lambda_handler(event, context):
     #read all appointments from db, populate calendar
     all_current_appts = gyoop_appts.scan()['Items']
     for new_event in all_current_appts:
-        eastern = pytz.timezone("America/New_York")
-        start_date_time = datetime.strptime(new_event['start_date_time'], "%Y-%m-%dT%H:%M:%S%z").astimezone(eastern)
-        end_date_time = datetime.strptime(new_event['end_date_time'], "%Y-%m-%dT%H:%M:%S%z").astimezone(eastern)
+        time_diff = 4
+        start_date_time = datetime.strptime(new_event['start_date_time'], "%Y-%m-%dT%H:%M:%S%z")
+        end_date_time = datetime.strptime(new_event['end_date_time'], "%Y-%m-%dT%H:%M:%S%z")
+        if bool(start_date_time.dst()):
+            time_diff = 5
+        start_date_time += timedelta(time_diff)
+        end_date_time += timedelta(time_diff)
         start_date_time = start_date_time.strftime("%Y-%m-%dT%H:%M:%S%z")
         end_date_time = end_date_time.strftime("%Y-%m-%dT%H:%M:%S%z")
 
