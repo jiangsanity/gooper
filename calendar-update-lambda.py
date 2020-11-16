@@ -42,13 +42,13 @@ def lambda_handler(event, context):
     #read all appointments from db, populate calendar
     all_current_appts = gyoop_appts.scan()['Items']
     for new_event in all_current_appts:
-        time_diff = 4
+        time_diff = 5
         start_date_time = datetime.strptime(new_event['start_date_time'], "%Y-%m-%dT%H:%M:%S%z")
         end_date_time = datetime.strptime(new_event['end_date_time'], "%Y-%m-%dT%H:%M:%S%z")
         if bool(start_date_time.dst()):
-            time_diff = 5
-        start_date_time += timedelta(time_diff)
-        end_date_time += timedelta(time_diff)
+            time_diff = 4
+        start_date_time += timedelta(hours=time_diff)
+        end_date_time += timedelta(hours=time_diff)
         start_date_time = start_date_time.strftime("%Y-%m-%dT%H:%M:%S%z")
         end_date_time = end_date_time.strftime("%Y-%m-%dT%H:%M:%S%z")
 
