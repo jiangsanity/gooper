@@ -3,6 +3,8 @@ import boto3
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from datetime import datetime, timedelta
+import pytz
+import os
 
 db = boto3.resource('dynamodb')
 gyoop_appts = db.Table('gyoop_appts')
@@ -13,12 +15,9 @@ gyoop_clients = db.Table('gyoop_clients')
 def lambda_handler(event, context):
     SCOPES = ['https://www.googleapis.com/auth/calendar']
     # SERVICE_ACCOUNT_FILE = 'gyoopercutscalendar-fca1ca3ca42c.json' # You should make it an environment variable
-    SERVICE_ACCOUNT_FILE = 'INSERT SERVICE ACCOUNT JSON FILE'
-
-
-
-    SUBJECT = 'ENTER SERVICE ACCOUNT EMAIL HERE'
-    CALENDAR_ID = 'ENTER CALENDAR ID HERE'
+    SERVICE_ACCOUNT_FILE = os.environ.get("SERVICE_ACCOUNT_FILE")
+    SUBJECT = os.environ.get("SUBJECT")
+    CALENDAR_ID = os.environ.get("CALENDAR_ID")
     
     
     credentials = service_account.Credentials.from_service_account_info(SERVICE_ACCOUNT_FILE, scopes=SCOPES)
@@ -45,10 +44,9 @@ def lambda_handler(event, context):
     #read all appointments from db, populate calendar
     all_current_appts = gyoop_appts.scan()['Items']
     for new_event in all_current_appts:
-        # start_date_time = new_event['start_date_time']
-        # end_date_time = new_event['end_date_time']
-        start_date_time = datetime.strptime(new_event['start_date_time'], "%Y-%m-%dT%H:%M:%S%z") + timedelta(hours=4)
-        end_date_time = datetime.strptime(new_event['end_date_time'], "%Y-%m-%dT%H:%M:%S%z") + timedelta(hours=4)
+        eastern = pytz.timezone("America/New_York")
+        start_date_time = datetime.strptime(new_event['start_date_time'], "%Y-%m-%dT%H:%M:%S%z").astimezone(eastern)
+        end_date_time = datetime.strptime(new_event['end_date_time'], "%Y-%m-%dT%H:%M:%S%z").astimezone(eastern)
         start_date_time = start_date_time.strftime("%Y-%m-%dT%H:%M:%S%z")
         end_date_time = end_date_time.strftime("%Y-%m-%dT%H:%M:%S%z")
 
