@@ -44,6 +44,8 @@ xml_retry = '<Response><Message><Body>You’ve entered an invalid input. Please 
 TWILIO_SMS_URL = "https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json"
 TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+DAYLIGHT_START_OBJ = datetime.strptime("2021-03-14T02:00:00Z", '%Y-%m-%dT%H:%M:%SZ')
+DAYLIGHT_END_OBJ = datetime.strptime("2021-11-07T02:00:00Z", '%Y-%m-%dT%H:%M:%SZ')
 
 db = boto3.resource('dynamodb')
 gyoop_appts = db.Table('gyoop_appts')
@@ -80,7 +82,8 @@ def lambda_handler(event, context):
             delete_all_appts()
             slot_id = 'A'
             while slot_end_obj <= all_end_obj:
-                add_slot_to_db(slot_id, slot_start_obj.strftime('%Y-%m-%dT%H:%M:%SZ'), slot_end_obj.strftime('%Y-%m-%dT%H:%M:%SZ'))
+                add_slot_to_db(slot_id, slot_start_obj, slot_end_obj)
+                # add_slot_to_db(slot_id, slot_start_obj.strftime('%Y-%m-%dT%H:%M:%SZ'), slot_end_obj.strftime('%Y-%m-%dT%H:%M:%SZ'))
                 slot_start_obj += timedelta(seconds=1800)
                 slot_end_obj += timedelta(seconds=1800)
                 slot_id = chr(ord(slot_id) + 1)
@@ -155,6 +158,10 @@ def lambda_handler(event, context):
                 scheduled_slot = get_slot(slot_id)
                 name = get_client(scheduled_slot["phone_number"])["name"]
                 date, start_time = utc_to_readable(scheduled_slot["start_date_time"])
+                start_time_obj = datetime.strptime(date + 'T' + start_time.split()[0] + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
+                if start_time_obj > DAYLIGHT_START_OBJ and start_time_obj < DAYLIGHT_END_OBJ:
+                    start_time_obj += timedelta(seconds=3600)
+                    start_time = start_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ').split('T')[1][:-1]
                 notification = '{0} scheduled an appointment for {1} at {2}'.format(name, date, start_time)
                 print('notification ', notification)
                 send_SMS(notification, os.environ.get("ADMIN_PHONE_NUMBER"))
@@ -214,16 +221,23 @@ def remind_clients():
     for appt in appts:
         if appt["phone_number"]:
             date, start_time = utc_to_readable(appt["start_date_time"])
+            start_time_obj = datetime.strptime(date + 'T' + start_time.split()[0] + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
+            if start_time_obj > DAYLIGHT_START_OBJ and start_time_obj < DAYLIGHT_END_OBJ:
+                start_time_obj += timedelta(seconds=3600)
+                start_time = start_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ').split('T')[1][:-1]
             reminder_message = 'This is a reminder for your haircut appointment on {0} at {1}.'.format(date, start_time)
             send_SMS(reminder_message, appt["phone_number"])
     send_SMS("Reminders sent successfully", os.environ.get("ADMIN_PHONE_NUMBER"))
 
-def add_slot_to_db(slot_id, start_time, end_time):
+def add_slot_to_db(slot_id, start_time_obj, end_time_obj):
+    if start_time_obj > DAYLIGHT_START_OBJ and start_time_obj < DAYLIGHT_END_OBJ:
+        start_time_obj -= timedelta(seconds=3600)
+        end_time_obj -= timedelta(seconds=3600)
     return gyoop_appts.put_item(
         Item = {
             'slot_id': slot_id,
-            'start_date_time': start_time,
-            'end_date_time': end_time,
+            'start_date_time': start_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ'),
+            'end_date_time': end_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ'),
             'phone_number': ''
         }
     )
@@ -364,6 +378,16 @@ def get_schedule_message():
     all_date, all_start_time = utc_to_readable(all_start_utc)
     _, all_end_time = utc_to_readable(all_end_utc)
 
+
+    # daylight savings fix
+    all_start_time_obj = datetime.strptime(all_date + 'T' + all_start_time.split()[0] + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
+    all_end_time_obj = datetime.strptime(all_date + 'T' + all_end_time.split()[0] + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
+    if all_start_time_obj > DAYLIGHT_START_OBJ and all_start_time_obj < DAYLIGHT_END_OBJ:
+        all_start_time_obj += timedelta(seconds=3600)
+        all_end_time_obj += timedelta(seconds=3600)
+        all_start_time = all_start_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ').split('T')[1][:-1]
+        all_end_time = all_end_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ').split('T')[1][:-1]
+
     for slot_id in open_slots:
         current_slot = get_slot(slot_id)
         start_time_utc = current_slot['start_date_time']
@@ -371,6 +395,15 @@ def get_schedule_message():
 
         end_time_utc = current_slot['end_date_time']
         _, end_time = utc_to_readable(end_time_utc)
+
+        # daylight savings fix
+        start_time_obj = datetime.strptime(date + 'T' + start_time.split()[0] + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
+        end_time_obj = datetime.strptime(date + 'T' + end_time.split()[0] + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
+        if start_time_obj > DAYLIGHT_START_OBJ and start_time_obj < DAYLIGHT_END_OBJ:
+            start_time_obj += timedelta(seconds=3600)
+            end_time_obj += timedelta(seconds=3600)
+            start_time = start_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ').split('T')[1][:-1]
+            end_time = end_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ').split('T')[1][:-1]
 
         new_line = xml_available_slot.format(slot_id, start_time, end_time)
         message_lines.append(new_line)
