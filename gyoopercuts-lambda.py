@@ -18,7 +18,8 @@ xml_name = '<Response><Message><Body>Welcome to Gyoopercuts! Reply with ‘YOUR_
 xml_actions = '<Response><Message><Body>Thanks for contacting Gyoopercuts! Reply with ‘SCHEDULE’ to schedule a new appointment. At any point, reply ‘START OVER’ to return to this message.</Body></Message></Response>'
 
 # schedule
-xml_schedule = 'Here are the time slots that are currently available for sign-ups. Haircuts on {0} will be between {1} and {2}. If your desired time is not listed below as an option, please check back later. Reply with ‘APPOINTMENT LETTER’ from the available time slots below. (ex. Reply ‘APPOINTMENT C’ for time slot C)\n'
+# xml_schedule = 'Here are the time slots that are currently available for sign-ups. Haircuts on {0} will be between {1} and {2}. If your desired time is not listed below as an option, please check back later. Reply with ‘APPOINTMENT LETTER’ from the available time slots below. (ex. Reply ‘APPOINTMENT C’ for time slot C)\n'
+xml_schedule = 'Here are the time slots that are currently available for sign-ups. Haircuts on {0} will be between {1} and {2}. Reply with ‘APPOINTMENT LETTER’ from the available time slots below. (ex. Reply ‘APPOINTMENT C’ for time slot C)\n'
 xml_available_slot = '\nTime Slot {0} :\n {1} - {2}'
 xml_appointment = '<Response><Message><Body>Thanks for scheduling an appointment. Keep in mind that you will need to find someone to replace your time slot if you’d like to change or cancel the appointment. </Body></Message></Response>'
 xml_already_signed_up = '<Response><Message><Body>You are already signed up, you may not sign up for multiple time slots.</Body></Message></Response>'
@@ -306,40 +307,61 @@ def end_conversation(phone_number):
         print('not in db')
 
 def get_available_slots():
-    print('inside avail slots')
+    ###########################################
+    ## Current Logic for all available slots ##
+    ###########################################
+    print('inside avail slots new logic')
     all_slots = []
     appts = get_all_appointments()
-    appt_str = ''
 
     for appt in appts:
         all_slots.append(appt['slot_id'])
     all_slots.sort()
 
+    available_slots = []
     for slot_id in all_slots:
         if not get_slot(slot_id)["phone_number"] or get_slot(slot_id)["phone_number"] == '':
-            appt_str += '0'
-        else:
-            appt_str += '1'
-
-    print('appt_str ', appt_str)
-    print('all_slots sorted', all_slots)
-
-    first_booked = appt_str.find('1')
-    last_booked = appt_str.rfind('1')
-    print("first and last booked indicies are ", first_booked, ' ', last_booked)
-    # all slot available
-    if first_booked == -1:
-        print("should be returning all_slots: ", all_slots)
-        return all_slots
-
-    available_slots = []
-    if first_booked != 0:
-        available_slots.append(all_slots[first_booked - 1])
-    if last_booked != len(appt_str) - 1:
-        available_slots.append(all_slots[last_booked + 1])
-
-    print('final avail ' , available_slots)
+            available_slots.append(slot_id)
     return available_slots
+
+
+    ###############################################
+    ## Previous Logic for consecutive slots only ##
+    ###############################################
+    # print('inside avail slots')
+    # all_slots = []
+    # appts = get_all_appointments()
+    # appt_str = ''
+
+    # for appt in appts:
+    #     all_slots.append(appt['slot_id'])
+    # all_slots.sort()
+
+    # for slot_id in all_slots:
+    #     if not get_slot(slot_id)["phone_number"] or get_slot(slot_id)["phone_number"] == '':
+    #         appt_str += '0'
+    #     else:
+    #         appt_str += '1'
+
+    # print('appt_str ', appt_str)
+    # print('all_slots sorted', all_slots)
+
+    # first_booked = appt_str.find('1')
+    # last_booked = appt_str.rfind('1')
+    # print("first and last booked indicies are ", first_booked, ' ', last_booked)
+    # # all slot available
+    # if first_booked == -1:
+    #     print("should be returning all_slots: ", all_slots)
+    #     return all_slots
+
+    # available_slots = []
+    # if first_booked != 0:
+    #     available_slots.append(all_slots[first_booked - 1])
+    # if last_booked != len(appt_str) - 1:
+    #     available_slots.append(all_slots[last_booked + 1])
+
+    # print('final avail ' , available_slots)
+    # return available_slots
 
 def get_slot(slot_id):
     try:
@@ -375,18 +397,35 @@ def get_schedule_message():
     
     all_start_utc = get_slot(first_slot_id)['start_date_time']
     all_end_utc = get_slot(last_slot_id)['end_date_time']
-    all_date, all_start_time = utc_to_readable(all_start_utc)
-    _, all_end_time = utc_to_readable(all_end_utc)
+    print("all_start_utc: ", all_start_utc)
+    print("all_end_utc: ", all_end_utc)
+    # all_date, all_start_time = utc_to_readable(all_start_utc)
+    # _, all_end_time = utc_to_readable(all_end_utc)
 
 
     # daylight savings fix
-    all_start_time_obj = datetime.strptime(all_date + 'T' + all_start_time.split()[0] + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
-    all_end_time_obj = datetime.strptime(all_date + 'T' + all_end_time.split()[0] + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
+    all_start_time_obj = datetime.strptime(all_start_utc, '%Y-%m-%dT%H:%M:%SZ')
+    all_end_time_obj = datetime.strptime(all_end_utc, '%Y-%m-%dT%H:%M:%SZ')
+    # all_start_time_obj = datetime.strptime(all_date + 'T' + all_start_time.split()[0] + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
+    # all_end_time_obj = datetime.strptime(all_date + 'T' + all_end_time.split()[0] + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
     if all_start_time_obj > DAYLIGHT_START_OBJ and all_start_time_obj < DAYLIGHT_END_OBJ:
         all_start_time_obj += timedelta(seconds=3600)
         all_end_time_obj += timedelta(seconds=3600)
-        all_start_time = all_start_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ').split('T')[1][:-1]
-        all_end_time = all_end_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ').split('T')[1][:-1]
+        print("all end time object is: ", all_end_time_obj)
+
+        all_start_utc = all_start_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ')
+        all_end_utc = all_end_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ')
+        print("all start utc is now: ", all_start_utc)
+        print("all end utc is now: ", all_end_utc)
+        # _, all_start_time = utc_to_readable(all_start_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ'))
+        # _, all_end_time = utc_to_readable(all_end_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ'))
+        # print("all end time is: ", all_end_time)
+
+        # all_start_time = all_start_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ').split('T')[1][:-1]
+        # all_end_time = all_end_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ').split('T')[1][:-1]
+
+    all_date, all_start_time = utc_to_readable(all_start_utc)
+    _, all_end_time = utc_to_readable(all_end_utc)
 
     for slot_id in open_slots:
         current_slot = get_slot(slot_id)
@@ -394,16 +433,22 @@ def get_schedule_message():
         date, start_time = utc_to_readable(start_time_utc)
 
         end_time_utc = current_slot['end_date_time']
+        print("end time utc is: ", end_time_utc)
         _, end_time = utc_to_readable(end_time_utc)
+        print("end time is: ", end_time)
 
         # daylight savings fix
-        start_time_obj = datetime.strptime(date + 'T' + start_time.split()[0] + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
-        end_time_obj = datetime.strptime(date + 'T' + end_time.split()[0] + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
+        start_time_obj = datetime.strptime(start_time_utc, '%Y-%m-%dT%H:%M:%SZ')
+        end_time_obj = datetime.strptime(end_time_utc, '%Y-%m-%dT%H:%M:%SZ')
+        # start_time_obj = datetime.strptime(date + 'T' + start_time.split()[0] + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
+        # end_time_obj = datetime.strptime(date + 'T' + end_time.split()[0] + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
         if start_time_obj > DAYLIGHT_START_OBJ and start_time_obj < DAYLIGHT_END_OBJ:
             start_time_obj += timedelta(seconds=3600)
             end_time_obj += timedelta(seconds=3600)
-            start_time = start_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ').split('T')[1][:-1]
-            end_time = end_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ').split('T')[1][:-1]
+            _, start_time = utc_to_readable(start_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ'))
+            _, end_time = utc_to_readable(end_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ'))
+            # start_time = start_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ').split('T')[1][:-1]
+            # end_time = end_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ').split('T')[1][:-1]
 
         new_line = xml_available_slot.format(slot_id, start_time, end_time)
         message_lines.append(new_line)
