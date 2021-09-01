@@ -8,6 +8,7 @@ import base64
 import os
 from helpers import *
 from xml_responses import *
+import requests
 # print('Loading function')
 
 xml_header = '<?xml version=\"1.0\" encoding=\"UTF-8\"?>'
@@ -47,6 +48,8 @@ TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
 TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
 DAYLIGHT_START_OBJ = datetime.strptime("2021-03-14T02:00:00Z", '%Y-%m-%dT%H:%M:%SZ')
 DAYLIGHT_END_OBJ = datetime.strptime("2021-11-07T02:00:00Z", '%Y-%m-%dT%H:%M:%SZ')
+GROUPME_BOT_ID = os.environ.get("GROUPME_BOT_ID")
+GROUPME_ENDPOINT = os.environ.get("GROUPME_ENDPOINT")
 
 db = boto3.resource('dynamodb')
 gyoop_appts = db.Table('gyoop_appts')
@@ -79,6 +82,9 @@ def lambda_handler(event, context):
             slot_start_obj = datetime.strptime(date + 'T' + all_start_time + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
             slot_end_obj = slot_start_obj + timedelta(seconds=1800)
             all_end_obj = datetime.strptime(date + 'T' + all_end_time + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
+
+            _, all_start_time = utc_to_readable(slot_start_obj.strftime('%Y-%m-%dT%H:%M:%SZ'))
+            _, all_end_time = utc_to_readable(all_end_obj.strftime('%Y-%m-%dT%H:%M:%SZ'))
 
             delete_all_appts()
             slot_id = 'A'
@@ -159,18 +165,30 @@ def lambda_handler(event, context):
                 scheduled_slot = get_slot(slot_id)
                 name = get_client(scheduled_slot["phone_number"])["name"]
                 date, start_time = utc_to_readable(scheduled_slot["start_date_time"])
+
                 start_time_obj = datetime.strptime(date + 'T' + start_time.split()[0] + ':00Z', '%Y-%m-%dT%H:%M:%SZ')
                 if start_time_obj > DAYLIGHT_START_OBJ and start_time_obj < DAYLIGHT_END_OBJ:
                     start_time_obj += timedelta(seconds=3600)
-                    start_time = start_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ').split('T')[1][:-1]
+                    _, start_time = utc_to_readable(start_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ'))
+                    # start_time = start_time_obj.strftime('%Y-%m-%dT%H:%M:%SZ').split('T')[1][:-1]
                 notification = '{0} scheduled an appointment for {1} at {2}'.format(name, date, start_time)
                 print('notification ', notification)
-                send_SMS(notification, os.environ.get("ADMIN_PHONE_NUMBER"))
+
+                # send_SMS(notification, os.environ.get("ADMIN_PHONE_NUMBER"))
+                send_groupme(notification)
+
                 return get_schedule_confirm_message()
             else:
                 return ask_try_again()
         else:
             return ask_try_again()
+
+def send_groupme(message):
+    payload = {
+        "text": message,
+        "bot_id": GROUPME_BOT_ID
+    }
+    requests.post(GROUPME_ENDPOINT, json.dumps(payload))
 
 def send_SMS(message, to_number):
     if not TWILIO_ACCOUNT_SID:
@@ -268,6 +286,8 @@ def delete_all_appts():
         return None
 
 def get_admin_message(date, start_time, end_time):
+    body = "Time slots have been created for {0} {1} to {2}."
+    send_groupme(body.format(date, start_time, end_time))
     return xml_header + xml_admin.format(date, start_time, end_time)
 
 def get_all_booked_message():
